@@ -1,8 +1,8 @@
 {
-  "name": "picky",
-  "version": "1.0.0",
+  "name": "@binaryme/picky",
+  "version": "1.0.1",
   "description": "MQTT topic observable",
-  "main": "index.js",
+  "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
     "lib/**/*"
