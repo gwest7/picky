@@ -89,9 +89,9 @@ export function connectDebug(
  * @param topic MQTT topic interests
  * @param sub Subject to notify the start of topic intrests
  * @param unsub Subject to notify the end of topic interets
- * @param onMessage If supplied then the operator will remove interests from the stream
- * and pass them to the callback, if not supplied only interests will be passed down the
- * stream effectively inverting the filter effect
+ * @param onMessage If supplied then the operator will remove message interests from the
+ * stream and pass them to the callback, if not supplied only message interests will be
+ * passed down the stream effectively inverting the filter effect
  * @returns An operator
  */
 export function interest(
