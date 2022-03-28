@@ -1,14 +1,14 @@
 # Picky
 
-The method `topicQualifier` is useful for testing is a received MQTT message is due to a specific subscription topic. The RxJs operator `interest` makes use of this method to subscribe to the provided topic and filtering incoming messages by that topic.
+The method `topicQualifier` is useful for "picking" message interestes from an MQTT message stream by using the RxJs operator `interest`. As the resulting observable is subscribed to and unsubscribed from it will in turn subscribe to and unsubscribe from the specified topic.
 
 ## Usage
 
-While subscribed to multiple MQTT topics including, for example `'a/b/c'`, you receive an MQTT message for the topic `messageTopic`. 
+While subscribed to multiple MQTT topics, including, for example `'a/b/c'`, you receive an MQTT message for the topic `messageTopic`. 
 
-```js
+```ts
 const subscriptionTopic = 'a/b/c';
-const qualifies = topicQualifier(subscriptionTopic, messageTopic);
+const pic:boolean = topicQualifier(subscriptionTopic, messageTopic);
 ```
 
 The whole point of `topicQualifier` is to take wildcards into account.
