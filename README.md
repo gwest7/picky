@@ -1,6 +1,6 @@
 # Picky
 
-The method `topicQualifier` is useful for "picking" message interestes from an MQTT message stream by using the RxJs operator `interest`. As the resulting observable is subscribed to and unsubscribed from it will in turn subscribe to and unsubscribe from the specified topic.
+The function `topicQualifier` is useful for "picking" message interestes from an MQTT message stream by using the RxJs operator `interest`. As the resulting observable is subscribed to and unsubscribed from it will in turn subscribe to and unsubscribe from the specified topic.
 
 ## Usage
 
@@ -44,4 +44,28 @@ const iotDevicesExclLights$ = mqttMessageStream$.pipe(
     // act on light message
   })
 )
+```
+
+With the optional `mqtt` dependency we can use the `connect` function to do the following:
+
+```ts
+const host = 'localhost:1883';
+const sub = new Subject();
+const unsub = new Subject();
+const pub = new Subject();
+
+// create an MQTT message stream
+const msgStream$ = connect(host, sub, unsub, pub);
+
+// isolate messages for light switches
+const light$ = msgStream$.pipe(interest('tele/switch/light/+', sub, unsub));
+
+// control the power of the lights
+// note that only when subscribed does the operator subscribe to the MQTT topic
+const subscription = light$.subscribe(({topic, payload}) => {
+  const LightPin = topic.split('/').pop();
+  pub.next({topic:`cmnd/light/${lightPin}`, payload})
+});
+
+subscription.unsubscribe(); // the operator in turn unsubscribes from the MQTT topic
 ```
