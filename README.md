@@ -4,18 +4,28 @@ The function `topicQualifier` is useful for "picking" message interestes from an
 
 ## Usage
 
-While subscribed to multiple MQTT topics, including, for example `'a/b/c'`, you receive an MQTT message for the topic `messageTopic`. 
+While subscribed to multiple MQTT topics, including, for example `'a/b/c'`, you receive an MQTT message for the topic `messageTopic`. `topicQualifier` will return `true` if the `messageTopic` qualifies as a valid `subscriptionTopic`.
 
 ```ts
 const subscriptionTopic = 'a/b/c';
-const pic:boolean = topicQualifier(subscriptionTopic, messageTopic);
+const pic:boolean = topicQualifier(messageTopic, subscriptionTopic);
 ```
 
-The whole point of `topicQualifier` is to take wildcards into account.
+The usefulness of `topicQualifier` is to take wildcards into account.
 
 ```js
-topicQualifier('a/b/+', messageTopic);
-topicQualifier('a/b/#', messageTopic);
+topicQualifier(messageTopic, 'a/b/+');
+topicQualifier(messageTopic, 'a/b/#');
+```
+
+`topicQualifier` is also able to return the wildcard matches between the subject topic and specification:
+```js
+topicQualifier('tele/device0/motion/sensor2', 'tele/+/motion/#', true);
+// returns ['device0','sensor2'];
+
+topicQualifier('a/b/c/d/e/f','a/+/+/d/#',true); //-> ['b', 'c', 'e/f']
+topicQualifier('a/b/c/d/e/f','a/#',true); //-> ['b/c/d/e/f']
+topicQualifier('a/b/c/d/e/f','x/#',true); //-> null
 ```
 
 The operator `interest` acts as an RxJs filter. The operator also manages its own subscription. When being subscribed to it will subscribe to the topic of interest. When unsubscribed from it will unsubscribe from the topic of interest.
@@ -38,7 +48,7 @@ const lights$ = mqttMessageStream$.pipe(
 
 The `interest` operator can also act as a filter which instead removes qualified messages from the stream and passes them to a callback.
 
-```ts
+```js
 const iotDevicesExclLights$ = mqttMessageStream$.pipe(
   interest('tele/lights/+', sub, unsub, ({topic, payload}) => {
     // act on light message
@@ -48,7 +58,7 @@ const iotDevicesExclLights$ = mqttMessageStream$.pipe(
 
 With the optional `mqtt` dependency we can use the `connect` function to do the following:
 
-```ts
+```js
 const host = 'localhost:1883';
 const sub = new Subject();
 const unsub = new Subject();

@@ -1,5 +1,11 @@
 import { Observable } from 'rxjs';
-import { IClientOptions, connect as _connect, IClientPublishOptions, IPublishPacket, IConnectPacket } from 'mqtt';
+import {
+  connect as _connect,
+  type IClientOptions,
+  type IClientPublishOptions,
+  type IPublishPacket,
+  type IConnectPacket,
+} from 'mqtt';
 
 export interface IMsg {
   topic: string;
@@ -127,26 +133,36 @@ export function interest(
   };
 }
 
+export function topicQualifier(subject: string, specification: string, returnMatches?:false): boolean;
+export function topicQualifier(subject: string, specification: string, returnMatches:true): string[] | null;
+
 /**
- * Check if an MQTT message is an interest of a subscriber by comparing the message topic and subscription topic
- * @param subject The MQTT topic of a message
- * @param specification A topic subscription to compare with the subject
- * @returns `true` if the subject fits the specification
+ * Check if an MQTT message is an interest of a subscriber by comparing the message topic and subscription topic.
+ * @param subject The MQTT topic of a message to be validated.
+ * @param specification A topic subscription to compare with the subject. Typically contains topic wildcards.
+ * @param returnMatches If `false` the function returns `true` is qualified (otherwise `false`). If `true` then
+ * wildcard matches are returned as strings. No matches results in a `null`. Every `+` (if matched) will result in
+ * strings each representing the text matched by the wildcard. A `#` (if matched) will result in a single string array
+ * representing the text matched by the wildcard.
+ * @returns Whether the subject fits the specification.
  */
-export function topicQualifier(subject: string, specification: string): boolean {
+export function topicQualifier(subject: string, specification: string, returnMatches = false): boolean | string[] | null {
   const qualifiers = specification.split('/');
   const actuals = subject.split('/');
+  const matches = returnMatches ? [] as string[] : null;
   for (let i = 0; i < actuals.length; i++) {
-    if (qualifiers.length <= i) return false; // remaining actuals won't qualify
+    if (qualifiers.length <= i) return matches ? null : false; // remaining actuals won't qualify
     const q = qualifiers[i];
     const a = actuals[i];
     if (q === a) continue; // segment qualifies - continue testing next segment
-    if (q === '#') return true; // remaining actuals qualify
+    if (q === '#') return matches ? matches.concat(actuals.slice(i).join('/')) : true; // remaining actuals qualify
     if (q === '+') {
-      if (actuals.length === qualifiers.length) return true;
+      if (matches) matches.push(a);
+      if (actuals.length === qualifiers.length && i + 1 === actuals.length) return matches ? matches : true;
       continue; // segment qualifies - continue testing next segment
     }
-    return false; // actual does not qualify
+    return matches ? null : false; // actual does not qualify
   }
-  return actuals.length === qualifiers.length; // remaining qualifiers are not met
+  if (!matches) return actuals.length === qualifiers.length; // remaining qualifiers are not met
+  return (actuals.length === qualifiers.length) ? matches : null;
 }

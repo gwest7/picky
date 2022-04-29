@@ -3,28 +3,48 @@ import { IMsg, interest, topicQualifier } from '../index';
 
 test('Topic qualifier', () => {
   expect(topicQualifier('a/b/c','a/b/c/d')).toBe(false);
+  expect(topicQualifier('a/b/c','a/b/c/d',true)).toBeNull();
   expect(topicQualifier('a/b/c','a/b/c')).toBe(true);
+  expect(topicQualifier('a/b/c','a/b/c',true)?.length).toStrictEqual(0);
   expect(topicQualifier('a/b/c','a/b')).toBe(false);
+  expect(topicQualifier('a/b/c','a/b',true)).toBeNull();
+
   expect(topicQualifier('a/b/c','a/+/c')).toBe(true);
+  expect(topicQualifier('a/b/c','a/+/c',true)?.join('|')).toBe('b');
   expect(topicQualifier('a/b/c/d','a/+/+')).toBe(false);
   expect(topicQualifier('a/b/c/d','a/+/+/#')).toBe(true);
+  expect(topicQualifier('a/b/c/d','a/+/+/#',true)?.join('|')).toBe('b|c|d');
+
   expect(topicQualifier('a/b/c/d/e','a/+/+/#')).toBe(true);
+  expect(topicQualifier('a/b/c/d/e','a/+/+/#',true)?.join('|')).toBe('b|c|d/e');
   expect(topicQualifier('a/b/c','a/+/+')).toBe(true);
+  expect(topicQualifier('a/b/c','a/+/+',true)?.join('|')).toBe('b|c');
   expect(topicQualifier('a/b','a/+/+')).toBe(false);
   expect(topicQualifier('a/b/c/d/e','a/+/+/d')).toBe(false);
   expect(topicQualifier('a/b/c/d/e','a/+/+/d/#')).toBe(true);
+  expect(topicQualifier('a/b/c/d/e','a/+/+/d/#',true)?.join('|')).toBe('b|c|e');
   expect(topicQualifier('a/b/c/d/e/f','a/+/+/d/#')).toBe(true);
+  expect(topicQualifier('a/b/c/d/e/f','a/+/+/d/#',true)?.join('|')).toBe('b|c|e/f');
+
   expect(topicQualifier('a/b/c/d','a/+/+/d')).toBe(true);
+  expect(topicQualifier('a/b/c/d','a/+/+/d',true)?.join('|')).toBe('b|c');
   expect(topicQualifier('a/b/c','a/+/+/d')).toBe(false);
   expect(topicQualifier('a/b/c/d','a/+/c/+')).toBe(true);
+  expect(topicQualifier('a/b/c/d','a/+/c/+',true)?.join('|')).toBe('b|d');
   expect(topicQualifier('a/b/c','+/b/c')).toBe(true);
+  expect(topicQualifier('a/b/c','+/b/c',true)?.join('|')).toBe('a');
   expect(topicQualifier('a/b','+/b/c')).toBe(false);
   
   expect(topicQualifier('a/b/c','a/b/#')).toBe(true);
+  expect(topicQualifier('a/b/c','a/b/#',true)?.join('|')).toBe('c');
   expect(topicQualifier('a/b/c','a/#')).toBe(true);
+  expect(topicQualifier('a/b/c','a/#',true)?.join('|')).toBe('b/c');
   expect(topicQualifier('a/b/c','#')).toBe(true);
+  expect(topicQualifier('a/b/c','#',true)?.join('|')).toBe('a/b/c');
   expect(topicQualifier('a/b/c','+/b/#')).toBe(true);
+  expect(topicQualifier('a/b/c','+/b/#',true)?.join('|')).toBe('a|c');
   expect(topicQualifier('a/b/c/d','+/b/#')).toBe(true);
+  expect(topicQualifier('a/b/c/d','+/b/#',true)?.join('|')).toBe('a|c/d');
 
   expect(topicQualifier('a/b/c','x/b/c')).toBe(false);
   expect(topicQualifier('a/b/c','a/x/c')).toBe(false);
