@@ -12,6 +12,12 @@ export interface IMsg {
   payload: Buffer;
   packet: IPublishPacket;
 }
+export interface IMatchMsg extends IMsg {
+  match: string[];
+}
+export interface IMultiMatchMsg extends IMsg {
+  match: [string, string[] | null][];
+}
 export interface IPublishMsg {
   topic: string;
   payload: string | Buffer;
@@ -89,6 +95,20 @@ export function connectDebug(
   });
 }
 
+export function interest(
+  topic: string,
+  sub: { next: (topics: string) => void },
+  unsub: { next: (topics: string) => void },
+  onMessage?: (msg: IMsg) => void,
+): ($: Observable<IMsg>) => Observable<IMsg>;
+
+export function interest(
+  topic: string[],
+  sub: { next: (topics: string[]) => void },
+  unsub: { next: (topics: string[]) => void },
+  onMessage?: (msg: IMsg) => void,
+): ($: Observable<IMsg>) => Observable<IMsg>;
+
 /**
  * Creates an operator that (un)subscribes to topic interests and filters MQTT messages
  * accordingly.
@@ -100,23 +120,23 @@ export function connectDebug(
  * passed down the stream effectively inverting the filter effect
  * @returns An operator
  */
-export function interest(
-  topic: string | string[],
-  sub: { next: (topics: string | string[]) => void },
-  unsub: { next: (topics: string | string[]) => void },
+export function interest<TopicType extends string | string[]>(
+  topic: TopicType,
+  sub: { next: (topics: TopicType) => void },
+  unsub: { next: (topics: TopicType) => void },
   onMessage?: (msg: IMsg) => void,
 ) {
   return ($: Observable<IMsg>): Observable<IMsg> => {
     return new Observable((subscriber) => {
-      const qualifiers = typeof topic === 'string' ? [topic] : topic;
+      const qualifiers: string[] = typeof topic === 'string' ? [topic] : topic;
       sub.next(topic);
       const _ = $.subscribe({
         next(msg) {
-          const qualified = qualifiers.find((qualifier) => topicQualifier(msg.topic, qualifier));
+          const found = !!qualifiers.find(q => topicQualifier(msg.topic, q));
           if (onMessage) {
-            if (qualified) onMessage(msg);
+            if (found) onMessage(msg);
             else subscriber.next(msg);
-          } else if (qualified) {
+          } else if (found) {
             subscriber.next(msg);
           }
         },
@@ -146,23 +166,95 @@ export function topicQualifier(subject: string, specification: string, returnMat
  * representing the text matched by the wildcard.
  * @returns Whether the subject fits the specification.
  */
-export function topicQualifier(subject: string, specification: string, returnMatches = false): boolean | string[] | null {
+export function topicQualifier(subject: string, specification: string, returnMatches?: boolean): boolean | string[] | null {
   const qualifiers = specification.split('/');
   const actuals = subject.split('/');
-  const matches = returnMatches ? [] as string[] : null;
+  const values = returnMatches ? [] as string[] : null;
   for (let i = 0; i < actuals.length; i++) {
-    if (qualifiers.length <= i) return matches ? null : false; // remaining actuals won't qualify
+    if (qualifiers.length <= i) return values ? null : false; // remaining actuals won't qualify
     const q = qualifiers[i];
     const a = actuals[i];
     if (q === a) continue; // segment qualifies - continue testing next segment
-    if (q === '#') return matches ? matches.concat(actuals.slice(i).join('/')) : true; // remaining actuals qualify
+    if (q === '#') return values ? values.concat(actuals.slice(i).join('/')) : true; // remaining actuals qualify
     if (q === '+') {
-      if (matches) matches.push(a);
-      if (actuals.length === qualifiers.length && i + 1 === actuals.length) return matches ? matches : true;
+      if (values) values.push(a);
       continue; // segment qualifies - continue testing next segment
     }
-    return matches ? null : false; // actual does not qualify
+    return values ? null : false; // actual does not qualify
   }
-  if (!matches) return actuals.length === qualifiers.length; // remaining qualifiers are not met
-  return (actuals.length === qualifiers.length) ? matches : null;
+  if (!values) return actuals.length === qualifiers.length; // remaining qualifiers are not met
+  return (actuals.length === qualifiers.length) ? values : null;
+}
+
+export function matches(
+  topic: string,
+  sub: { next: (topics: string) => void },
+  unsub: { next: (topics: string) => void },
+): ($: Observable<IMsg>) => Observable<IMatchMsg>;
+
+export function matches(
+  topic: string,
+  sub: { next: (topics: string) => void },
+  unsub: { next: (topics: string) => void },
+  onMessage: (msg: IMatchMsg) => void,
+): ($: Observable<IMsg>) => Observable<IMsg>;
+
+export function matches(
+  topic: string[],
+  sub: { next: (topics: string[]) => void },
+  unsub: { next: (topics: string[]) => void },
+): ($: Observable<IMsg>) => Observable<IMultiMatchMsg>;
+
+export function matches(
+  topic: string[],
+  sub: { next: (topics: string[]) => void },
+  unsub: { next: (topics: string[]) => void },
+  onMessage: (msg: IMultiMatchMsg) => void,
+): ($: Observable<IMsg>) => Observable<IMsg>;
+
+/**
+ * Creates an operator that (un)subscribes to topic interests and filters MQTT messages
+ * accordingly.
+ * @param topic MQTT topic interests
+ * @param sub Subject to notify the start of topic intrests
+ * @param unsub Subject to notify the end of topic interets
+ * @param onMessage If supplied then the operator will remove message interests from the
+ * stream and pass them to the callback, if not supplied only message interests will be
+ * passed down the stream effectively inverting the filter effect
+ * @returns An operator
+ */
+ export function matches<TopicType extends string | string[], MsgType extends IMatchMsg | IMultiMatchMsg>(
+  topic: TopicType,
+  sub: { next: (topics: TopicType) => void },
+  unsub: { next: (topics: TopicType) => void },
+  onMessage?: (msg: MsgType) => void,
+) {
+  return ($: Observable<IMsg>): Observable<IMsg | MsgType> => {
+    return new Observable((subscriber) => {
+      const qualifiers: string[] = typeof topic === 'string' ? [topic] : topic;
+      sub.next(topic);
+      const _ = $.subscribe({
+        next(msg) {
+          const matchMsg = msg as MsgType;
+          const match: [string, string[] | null][] = qualifiers.map(q => [q,topicQualifier(msg.topic, q, true)]);
+          const found = !!match.find(m => m[1] !== null);
+          if (found) matchMsg.match = typeof topic === 'string' ? match[0][1] as string[] : match;
+          if (onMessage) {
+            if (found) onMessage(matchMsg);
+            else subscriber.next(msg);
+          } else if (found) {
+            subscriber.next(matchMsg);
+          }
+        },
+        error(er) {
+          subscriber.error(er);
+        },
+        complete() {
+          subscriber.complete();
+        },
+      });
+      _.add(() => unsub.next(topic));
+      return _;
+    });
+  };
 }

@@ -1,6 +1,6 @@
 # Picky
 
-The function `topicQualifier` is useful for "picking" message interestes from an MQTT message stream by using the RxJs operator `interest`. As the resulting observable is subscribed to and unsubscribed from it will in turn subscribe to and unsubscribe from the specified topic.
+The function `topicQualifier` is useful for "picking" message interestes from an MQTT message stream by using the RxJs operator `interest`. As the resulting observable is subscribed to (and unsubscribed from) it will in turn subscribe to (and unsubscribe from) the specified MQTT topic.
 
 ## Usage
 
@@ -11,7 +11,7 @@ const subscriptionTopic = 'a/b/c';
 const pic:boolean = topicQualifier(messageTopic, subscriptionTopic);
 ```
 
-The usefulness of `topicQualifier` is to take wildcards into account.
+The usefulness of `topicQualifier` is clear when wildcards are used.
 
 ```js
 topicQualifier(messageTopic, 'a/b/+');
@@ -28,7 +28,7 @@ topicQualifier('a/b/c/d/e/f','a/#',true); //-> ['b/c/d/e/f']
 topicQualifier('a/b/c/d/e/f','x/#',true); //-> null
 ```
 
-The operator `interest` acts as an RxJs filter. The operator also manages its own subscription. When being subscribed to it will subscribe to the topic of interest. When unsubscribed from it will unsubscribe from the topic of interest.
+The operator `interest` acts as an RxJs filter by making use of `topicQualifier`. The `interest` operator also manages its own MQTT topic subscription.
 
 ```ts
 const sub = {
@@ -41,6 +41,8 @@ const unsub = {
     // mqttClient.unsubscribe(topics);
   }
 };
+
+// isolate MQTT messages we are interested in
 const lights$ = mqttMessageStream$.pipe(
   interest('tele/lights/+', sub, unsub)
 )
@@ -56,7 +58,7 @@ const iotDevicesExclLights$ = mqttMessageStream$.pipe(
 )
 ```
 
-With the optional `mqtt` dependency we can use the `connect` function to do the following:
+Using the `mqtt` client we can use the `connect` function to do the following:
 
 ```js
 const host = 'localhost:1883';
@@ -65,17 +67,62 @@ const unsub = new Subject();
 const pub = new Subject();
 
 // create an MQTT message stream
-const msgStream$ = connect(host, sub, unsub, pub);
+const msg$ = connect(host, sub, unsub, pub);
 
 // isolate messages for light switches
-const light$ = msgStream$.pipe(interest('tele/switch/light/+', sub, unsub));
+const light$ = msg$.pipe(interest('tele/switch/light/+', sub, unsub));
 
 // control the power of the lights
-// note that only when subscribed does the operator subscribe to the MQTT topic
+// Note that only when subscribed does the operator subscribe
+// to the MQTT topic
 const subscription = light$.subscribe(({topic, payload}) => {
   const LightPin = topic.split('/').pop();
-  pub.next({topic:`cmnd/light/${lightPin}`, payload})
+  // then assuming the payload is correct...
+  pub.next({topic:`cmnd/light/${lightPin}`, payload});
 });
 
-subscription.unsubscribe(); // the operator in turn unsubscribes from the MQTT topic
+// the operator in turn unsubscribes from the MQTT topic
+subscription.unsubscribe();
+```
+
+The `matches` operator works exactly the same as the `interest` operator, but in addition to filtering topic interests is also adds a `match` property to the observable value. This value contains the wildcard matches as described previously. With this we don't have to manipulate topic strings to get identifiers from the message topic. The previous code snippet can then be done like this:
+
+```js
+const host = 'localhost:1883';
+const sub = new Subject();
+const unsub = new Subject();
+const pub = new Subject();
+
+const msg$ = connect(host, sub, unsub, pub);
+
+const light$ = msg$.pipe(matches('tele/switch/light/+', sub, unsub));
+
+const subscription = light$.subscribe(({topic, payload, match}) => {
+  // one wildcard (`+`) will result in one matched wildcard value
+  const [LightPin] = match;
+  pub.next({topic:`cmnd/light/${LightPin}`, payload});
+});
+
+subscription.unsubscribe();
+```
+
+When using multiple topics with `matches` the resulting `match` object becomes a bit more detailed.
+
+```js
+// Given the message topic
+`tele/room1/device2/sensor1/12`
+// `matches` will have the following results:
+
+// single topic
+matches('tele/+/+/#', sub, unsub)
+// results in
+['room1', 'device2', 'sensor1/12']
+
+// multiple topics
+matches(['tele/+/+/#','proxied/tele/+/+/#'], sub, unsub)
+// results in an array lookup list with wildcard matches for each topic
+[
+  ['tele/+/+/#', ['room1', 'device2', 'sensor1/12']],
+  ['proxied/tele/+/+/#', null],
+]
 ```

@@ -1,5 +1,5 @@
 import { Subject } from 'rxjs';
-import { IMsg, interest, topicQualifier } from '../index';
+import { IMsg, interest, matches, topicQualifier } from '../index';
 
 test('Topic qualifier', () => {
   expect(topicQualifier('a/b/c','a/b/c/d')).toBe(false);
@@ -34,6 +34,8 @@ test('Topic qualifier', () => {
   expect(topicQualifier('a/b/c','+/b/c')).toBe(true);
   expect(topicQualifier('a/b/c','+/b/c',true)?.join('|')).toBe('a');
   expect(topicQualifier('a/b','+/b/c')).toBe(false);
+  expect(topicQualifier('a/b/c','+/b/+')).toBe(true);
+  expect(topicQualifier('a/b/c','+/b/+',true)?.join('|')).toBe('a|c');
   
   expect(topicQualifier('a/b/c','a/b/#')).toBe(true);
   expect(topicQualifier('a/b/c','a/b/#',true)?.join('|')).toBe('c');
@@ -51,7 +53,31 @@ test('Topic qualifier', () => {
   expect(topicQualifier('a/b/c','a/b/x')).toBe(false);
 });
 
-test('Interest operator', () => {
+test('Interest operator (single topic)', () => {
+  const tests: string[] = [];
+  const topic = 'a/b/5';
+  const msg$ = new Subject<IMsg>();
+  const $ = msg$.pipe(interest(
+    topic,
+    { next(topics){ tests.push(`subscribed to ${topics}`) } },
+    { next(topics){ tests.push(`unsubscribed from ${topics}`) } },
+  ));
+
+  expect(tests.length).toBe(0);
+  const sub = $.subscribe(({payload}) => tests.push(`received: ${payload.toString()}`));
+  expect(tests.length).toBe(1);
+  for (let i=0; i<9; i++) msg$.next({topic:`a/b/${i}`,payload:Buffer.from(`test ${i}`, "utf-8")} as any);
+  expect(tests.length).toBe(2);
+  sub.unsubscribe();
+  expect(tests.length).toBe(3);
+
+  expect(tests[0]).toBe('subscribed to a/b/5');
+  expect(tests[1]).toBe('received: test 5');
+  expect(tests[2]).toBe('unsubscribed from a/b/5');
+})
+
+
+test('Interest operator (multiple topics)', () => {
   const tests: string[] = [];
   const topic = ['a/b/7','a/b/3'];
   const msg$ = new Subject<IMsg>();
@@ -75,6 +101,39 @@ test('Interest operator', () => {
   expect(tests[3]).toBe('unsubscribed 2 topics');
 })
 
+test('Interest operator (single topic matches)', () => {
+  const tests: string[] = [];
+  const topic = 'a/+/c/+/e/#';
+  const msg$ = new Subject<IMsg>();
+  const $ = msg$.pipe(matches(topic, { next(topics){} }, { next(topics){} }));
+
+  const sub = $.subscribe(({match}) => tests.push(`match: ${match?.join(',')}`));
+  msg$.next({topic:'a/b/c/d/e/f/g'} as any);
+  sub.unsubscribe();
+
+  expect(tests.length).toBe(1);
+  expect(tests[0]).toBe('match: b,d,f/g');
+})
+
+test('Interest operator (multi topic matches)', () => {
+  const tests: string[] = [];
+  const topic = ['a/+/c/+/e/#','a/b/+/d/+/f/g'];
+  const msg$ = new Subject<IMsg>();
+  const $ = msg$.pipe(matches(topic, { next(topics){} }, { next(topics){} }));
+
+  expect(tests.length).toBe(0);
+  const sub = $.subscribe(({match}) => {
+    tests.push(`match: ${match[0][1]?.join(',')}`);
+    tests.push(`match: ${match[1][1]?.join(',')}`);
+  });
+  msg$.next({topic:'a/b/c/d/e/f/g'} as any);
+  sub.unsubscribe();
+
+  expect(tests.length).toBe(2);
+  expect(tests[0]).toBe('match: b,d,f/g');
+  expect(tests[1]).toBe('match: c,e');
+})
+
 test('Interest operator with callback', () => {
   const tests: string[] = [];
   const topic = ['a/b/7','a/b/3'];
@@ -82,7 +141,7 @@ test('Interest operator with callback', () => {
   const $ = msg$.pipe(interest(
     topic,
     { next(topics){ tests.push(`subscribed to ${topics.length} topics`) } },
-    { next(topics){ tests.push(`unsubscribed ${topics.length} topics`) } },
+    { next(topics){ tests.push(`unsubscribed from ${topics.length} topics`) } },
     ({payload}) => tests.push(`received: ${payload.toString()}`),
   ));
 
@@ -98,5 +157,31 @@ test('Interest operator with callback', () => {
   expect(tests[1]).toBe('ignored: test 2');
   expect(tests[2]).toBe('received: test 3');
   expect(tests[3]).toBe('ignored: test 4');
-  expect(tests[4]).toBe('unsubscribed 2 topics');
+  expect(tests[4]).toBe('unsubscribed from 2 topics');
+})
+
+test('Interest operator with callback (matches)', () => {
+  const tests: string[] = [];
+  const topic = ['+/3/+'];
+  const msg$ = new Subject<IMsg>();
+  const $ = msg$.pipe(matches(
+    topic,
+    { next(topics){ tests.push(`subscribed to ${topics.length} topic`) } },
+    { next(topics){ tests.push(`unsubscribed from ${topics.length} topic`) } },
+    ({match}) => tests.push(`match: ${match[0][1]?.join(',')}`),
+  ));
+
+  expect(tests.length).toBe(0);
+  const sub = $.subscribe(({payload}) => tests.push(`ignored: ${payload.toString()}`));
+  expect(tests.length).toBe(1);
+  for (let i=2; i<5; i++) msg$.next({topic:`${i}/${i}/${i}`,payload:Buffer.from(`test ${i}`, "utf-8")} as any);
+  expect(tests.length).toBe(4);
+  sub.unsubscribe();
+  expect(tests.length).toBe(5);
+
+  expect(tests[0]).toBe('subscribed to 1 topic');
+  expect(tests[1]).toBe('ignored: test 2');
+  expect(tests[2]).toBe('match: 3,3');
+  expect(tests[3]).toBe('ignored: test 4');
+  expect(tests[4]).toBe('unsubscribed from 1 topic');
 })
