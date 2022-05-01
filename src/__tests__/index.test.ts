@@ -59,8 +59,8 @@ test('Interest operator (single topic)', () => {
   const msg$ = new Subject<IMsg>();
   const $ = msg$.pipe(interest(
     topic,
-    { next(topics){ tests.push(`subscribed to ${topics}`) } },
-    { next(topics){ tests.push(`unsubscribed from ${topics}`) } },
+    { next({topic}){ tests.push(`subscribed to ${topic}`) } },
+    { next({topic}){ tests.push(`unsubscribed from ${topic}`) } },
   ));
 
   expect(tests.length).toBe(0);
@@ -83,8 +83,8 @@ test('Interest operator (multiple topics)', () => {
   const msg$ = new Subject<IMsg>();
   const $ = msg$.pipe(interest(
     topic,
-    { next(topics){ tests.push(`subscribed to ${topics.length} topics`) } },
-    { next(topics){ tests.push(`unsubscribed ${topics.length} topics`) } },
+    { next({topic}){ tests.push(`subscribed to ${topic.length} topics`) } },
+    { next({topic}){ tests.push(`unsubscribed ${topic.length} topics`) } },
   ));
 
   expect(tests.length).toBe(0);
@@ -140,8 +140,8 @@ test('Interest operator with callback', () => {
   const msg$ = new Subject<IMsg>();
   const $ = msg$.pipe(interest(
     topic,
-    { next(topics){ tests.push(`subscribed to ${topics.length} topics`) } },
-    { next(topics){ tests.push(`unsubscribed from ${topics.length} topics`) } },
+    { next({topic}){ tests.push(`subscribed to ${topic.length} topics`) } },
+    { next({topic}){ tests.push(`unsubscribed from ${topic.length} topics`) } },
     ({payload}) => tests.push(`received: ${payload.toString()}`),
   ));
 
@@ -166,8 +166,8 @@ test('Interest operator with callback (matches)', () => {
   const msg$ = new Subject<IMsg>();
   const $ = msg$.pipe(matches(
     topic,
-    { next(topics){ tests.push(`subscribed to ${topics.length} topic`) } },
-    { next(topics){ tests.push(`unsubscribed from ${topics.length} topic`) } },
+    { next({topic}){ tests.push(`subscribed to ${topic.length} topic`) } },
+    { next({topic}){ tests.push(`unsubscribed from ${topic.length} topic`) } },
     ({match}) => tests.push(`match: ${match[0][1]?.join(',')}`),
   ));
 

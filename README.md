@@ -58,7 +58,7 @@ const iotDevicesExclLights$ = mqttMessageStream$.pipe(
 )
 ```
 
-Using the `mqtt` client we can use the `connect` function to do the following:
+Using the `mqtt` client we can use the `createMessageStream` function to do the following:
 
 ```js
 const host = 'localhost:1883';
@@ -67,7 +67,7 @@ const unsub = new Subject();
 const pub = new Subject();
 
 // create an MQTT message stream
-const msg$ = connect(host, sub, unsub, pub);
+const msg$ = createMessageStream(host, sub, unsub, pub);
 
 // isolate messages for light switches
 const light$ = msg$.pipe(interest('tele/switch/light/+', sub, unsub));
@@ -85,7 +85,12 @@ const subscription = light$.subscribe(({topic, payload}) => {
 subscription.unsubscribe();
 ```
 
-The `matches` operator works exactly the same as the `interest` operator, but in addition to filtering topic interests is also adds a `match` property to the observable value. This value contains the wildcard matches as described previously. With this we don't have to manipulate topic strings to get identifiers from the message topic. The previous code snippet can then be done like this:
+To have all communication printed instead of communicating with an MQTT broker use the `createMessageStreamDebug` function.
+```js
+const msg$ = createMessageStreamDebug(host, sub, unsub, pub);
+```
+
+The `matches` operator works exactly the same as the `interest` operator, but in addition to filtering topic interests it also adds a `match` property to the value. This value contains the wildcard matches as described previously. With this we don't have to manipulate topic strings to get identifiers from the message topic. The previous code snippet can then be done like this:
 
 ```js
 const host = 'localhost:1883';
@@ -93,7 +98,7 @@ const sub = new Subject();
 const unsub = new Subject();
 const pub = new Subject();
 
-const msg$ = connect(host, sub, unsub, pub);
+const msg$ = createMessageStream(host, sub, unsub, pub);
 
 const light$ = msg$.pipe(matches('tele/switch/light/+', sub, unsub));
 
@@ -119,10 +124,10 @@ matches('tele/+/+/#', sub, unsub)
 ['room1', 'device2', 'sensor1/12']
 
 // multiple topics
-matches(['tele/+/+/#','proxied/tele/+/+/#'], sub, unsub)
+matches(['tele/+/+/#','proxied_tele/+/+/#'], sub, unsub)
 // results in an array lookup list with wildcard matches for each topic
 [
   ['tele/+/+/#', ['room1', 'device2', 'sensor1/12']],
-  ['proxied/tele/+/+/#', null],
+  ['proxied_tele/+/+/#', null],
 ]
 ```

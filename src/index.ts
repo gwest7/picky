@@ -1,10 +1,13 @@
 import { Observable } from 'rxjs';
+import type {
+  IClientOptions,
+  IClientPublishOptions,
+  IPublishPacket,
+  IConnectPacket,
+  IClientSubscribeOptions,
+} from 'mqtt';
 import {
   connect as _connect,
-  type IClientOptions,
-  type IClientPublishOptions,
-  type IPublishPacket,
-  type IConnectPacket,
 } from 'mqtt';
 
 export interface IMsg {
@@ -17,6 +20,14 @@ export interface IMatchMsg extends IMsg {
 }
 export interface IMultiMatchMsg extends IMsg {
   match: [string, string[] | null][];
+}
+export interface ISub {
+  topic: string | string[];
+  opts?: IClientSubscribeOptions;
+}
+export interface IUnsub {
+  topic: string | string[];
+  opts?: object;
 }
 export interface IPublishMsg {
   topic: string;
@@ -35,10 +46,10 @@ export interface IPublishMsg {
  * @param opts MQTT client connection options
  * @returns An stream of MQTT messages
  */
-export function connect(
+export function createMessageStream(
   url: string,
-  sub: Observable<string | string[]>,
-  unsub: Observable<string | string[]>,
+  sub: Observable<ISub>,
+  unsub: Observable<IUnsub>,
   pub: Observable<IPublishMsg>,
   options?: IClientOptions,
   onConnect?: (packet?: IConnectPacket) => void,
@@ -47,17 +58,21 @@ export function connect(
   return new Observable<IMsg>((subscriber) => {
     const mqtt = _connect(url, options);
     mqtt.on('message', (topic, payload, packet) => subscriber.next({ topic, payload, packet }));
-    mqtt.on('connect', (packet) => onConnect?.(packet));
-    // mqtt.on('error', (error) => subscriber.error(error));
-    mqtt.on('error', (error) => console.warn(error));
-    // mqtt.on('close', () => subscriber.complete());
+    mqtt.on('connect', (packet) => onConnect?.(packet)); // Emitted on successful (re)connection (i.e. connack rc=0)
+    mqtt.on('error', (error) => subscriber.error(error));
     mqtt.on('close', () => onClose?.());
 
     const s = pub.subscribe(({ topic, payload, opts }) => {
       opts ? mqtt.publish(topic, payload, opts) : mqtt.publish(topic, payload);
     });
-    s.add(sub.subscribe((topics) => mqtt.subscribe(topics)));
-    s.add(unsub.subscribe((topics) => mqtt.unsubscribe(topics)));
+    s.add(sub.subscribe(({topic, opts}) => {
+      if (opts) mqtt.subscribe(topic, opts);
+      else mqtt.subscribe(topic);
+    }));
+    s.add(unsub.subscribe(({topic,opts}) => {
+      if (opts) mqtt.unsubscribe(topic, opts);
+      else mqtt.unsubscribe(topic);
+    }));
 
     return () => {
       s.unsubscribe();
@@ -76,10 +91,10 @@ export function connect(
  * @param fakeMsg$ A stream that could be used to fake incoming messages
  * @returns A stream of MQTT messages fakes using the `fakeMsg$` parameter
  */
-export function connectDebug(
+export function createMessageStreamDebug(
   url: string,
-  sub: Observable<string | string[]>,
-  unsub: Observable<string | string[]>,
+  sub: Observable<ISub>,
+  unsub: Observable<IUnsub>,
   pub: Observable<IPublishMsg>,
   fakeMsg$: Observable<IMsg>,
 ) {
@@ -87,8 +102,8 @@ export function connectDebug(
     console.debug(`CONNECT: ${url}`);
     const s = fakeMsg$.subscribe((msg) => subscriber.next(msg));
     s.add(pub.subscribe(({ topic, payload }) => console.debug(`PUBLISH: [${topic}] ${payload}`)));
-    s.add(sub.subscribe((topics) => console.debug(`SUB: ${topics.toString()}`)));
-    s.add(unsub.subscribe((topics) => console.debug(`UNS: ${topics.toString()}`)));
+    s.add(sub.subscribe(({topic}) => console.debug(`SUB: ${topic.toString()}`)));
+    s.add(unsub.subscribe(({topic}) => console.debug(`UNS: ${topic.toString()}`)));
     return () => {
       s.unsubscribe();
     };
@@ -97,15 +112,15 @@ export function connectDebug(
 
 export function interest(
   topic: string,
-  sub: { next: (topics: string) => void },
-  unsub: { next: (topics: string) => void },
+  sub: { next: (value:{topic: string}) => void },
+  unsub: { next: (value:{topic: string}) => void },
   onMessage?: (msg: IMsg) => void,
 ): ($: Observable<IMsg>) => Observable<IMsg>;
 
 export function interest(
   topic: string[],
-  sub: { next: (topics: string[]) => void },
-  unsub: { next: (topics: string[]) => void },
+  sub: { next: (value:{topic: string[]}) => void },
+  unsub: { next: (value:{topic: string[]}) => void },
   onMessage?: (msg: IMsg) => void,
 ): ($: Observable<IMsg>) => Observable<IMsg>;
 
@@ -122,14 +137,14 @@ export function interest(
  */
 export function interest<TopicType extends string | string[]>(
   topic: TopicType,
-  sub: { next: (topics: TopicType) => void },
-  unsub: { next: (topics: TopicType) => void },
+  sub: { next: (value:{topic: TopicType}) => void },
+  unsub: { next: (value:{topic: TopicType}) => void },
   onMessage?: (msg: IMsg) => void,
 ) {
   return ($: Observable<IMsg>): Observable<IMsg> => {
     return new Observable((subscriber) => {
       const qualifiers: string[] = typeof topic === 'string' ? [topic] : topic;
-      sub.next(topic);
+      sub.next({topic});
       const _ = $.subscribe({
         next(msg) {
           const found = !!qualifiers.find(q => topicQualifier(msg.topic, q));
@@ -147,7 +162,7 @@ export function interest<TopicType extends string | string[]>(
           subscriber.complete();
         },
       });
-      _.add(() => unsub.next(topic));
+      _.add(() => unsub.next({topic}));
       return _;
     });
   };
@@ -188,27 +203,27 @@ export function topicQualifier(subject: string, specification: string, returnMat
 
 export function matches(
   topic: string,
-  sub: { next: (topics: string) => void },
-  unsub: { next: (topics: string) => void },
+  sub: { next: (value:{topic: string}) => void },
+  unsub: { next: (value:{topic: string}) => void },
 ): ($: Observable<IMsg>) => Observable<IMatchMsg>;
 
 export function matches(
   topic: string,
-  sub: { next: (topics: string) => void },
-  unsub: { next: (topics: string) => void },
+  sub: { next: (value:{topic: string}) => void },
+  unsub: { next: (value:{topic: string}) => void },
   onMessage: (msg: IMatchMsg) => void,
 ): ($: Observable<IMsg>) => Observable<IMsg>;
 
 export function matches(
   topic: string[],
-  sub: { next: (topics: string[]) => void },
-  unsub: { next: (topics: string[]) => void },
+  sub: { next: (value:{topic: string[]}) => void },
+  unsub: { next: (value:{topic: string[]}) => void },
 ): ($: Observable<IMsg>) => Observable<IMultiMatchMsg>;
 
 export function matches(
   topic: string[],
-  sub: { next: (topics: string[]) => void },
-  unsub: { next: (topics: string[]) => void },
+  sub: { next: (value:{topic: string[]}) => void },
+  unsub: { next: (value:{topic: string[]}) => void },
   onMessage: (msg: IMultiMatchMsg) => void,
 ): ($: Observable<IMsg>) => Observable<IMsg>;
 
@@ -225,14 +240,14 @@ export function matches(
  */
  export function matches<TopicType extends string | string[], MsgType extends IMatchMsg | IMultiMatchMsg>(
   topic: TopicType,
-  sub: { next: (topics: TopicType) => void },
-  unsub: { next: (topics: TopicType) => void },
+  sub: { next: (value:{topic: TopicType}) => void },
+  unsub: { next: (value:{topic: TopicType}) => void },
   onMessage?: (msg: MsgType) => void,
 ) {
   return ($: Observable<IMsg>): Observable<IMsg | MsgType> => {
     return new Observable((subscriber) => {
       const qualifiers: string[] = typeof topic === 'string' ? [topic] : topic;
-      sub.next(topic);
+      sub.next({topic});
       const _ = $.subscribe({
         next(msg) {
           const matchMsg = msg as MsgType;
@@ -253,7 +268,7 @@ export function matches(
           subscriber.complete();
         },
       });
-      _.add(() => unsub.next(topic));
+      _.add(() => unsub.next({topic}));
       return _;
     });
   };
